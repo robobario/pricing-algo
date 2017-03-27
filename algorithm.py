@@ -44,6 +44,7 @@ class Algorithm:
         for tier in tiers:
             price = self.highest_matching_price_in_tier(tier, product_features, buyer_features)
             if price is not None:
+                print("found price in tier [{}] : {} stop the search!".format(tier, price))
                 return price
             else:
                 print("found no matching rules with specificity " + str(tier))
@@ -62,21 +63,22 @@ class Algorithm:
     def highest_matching_price_in_product(self, product, product_features, buyer_features):
         if not self.product_matches(product, product_features):
             return None
-        print("found a rule with product-features [{}] matching impression [{}] ".format(product["product_features"], product_features))
+        print("--- found a rule with product-features [{}] matching impression [{}] ".format(product["product_features"], product_features))
         highest_price = None
         for offer in product["offers"]:
             if self.offer_matches(offer, buyer_features, product_features):
-                print("- found an offer with a matching buyer {}".format(str(offer)))
+                print("---- found an offer with a matching buyer {}".format(str(offer)))
                 price = offer["price"]
                 if price is not None and (highest_price is None or price > highest_price):
-                    print("- found a price {} higher than the last max {}".format(str(price), str(highest_price)))
+                    print("---- found a price {} higher than the last max {}".format(str(price), str(highest_price)))
                     highest_price = price
+        print("--- highest price found : {}".format(highest_price))
         return highest_price
 
     def offer_matches(self, offer, buyer_features, product_features):
         if not self.feature_matches_eq(offer, product_features, TRANSPARENCY):
             print(
-                "-- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]),
+                "---- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]),
                                                                                            str(product_features[TRANSPARENCY])))
             return False
         buyer_groups = [self.model.get_segment(segment) for segment in offer["buyer-segments"]]
@@ -84,7 +86,7 @@ class Algorithm:
             for buyer_id in group:
                 buyer = self.model.get_buyer(buyer_id)
                 if self.buyer_matches(buyer, buyer_features):
-                    print("-- found buyer [{}] matching buyer features [{}]".format(str(buyer), str(buyer_features)))
+                    print("----- found buyer [{}] matching buyer features [{}]".format(str(buyer), str(buyer_features)))
                     return True
         return False
 
