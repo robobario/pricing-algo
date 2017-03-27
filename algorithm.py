@@ -41,7 +41,7 @@ class Algorithm:
     def get_price(self, product_features, buyer_features):
         # rules are organised into tiers by specificity, the more product features the higher the tier
         tiers = reversed(sorted(self.model.tiers.keys()))
-        for tier in tiers:
+        for tier in tiers:  # iterate from high specificity to low
             price = self.highest_matching_price_in_tier(tier, product_features, buyer_features)
             if price is not None:
                 print("found price in tier [{}] : {} stop the search!".format(tier, price))
@@ -79,7 +79,7 @@ class Algorithm:
         if not self.feature_matches_eq(offer, product_features, TRANSPARENCY):
             print(
                 "---- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]),
-                                                                                           str(product_features[TRANSPARENCY])))
+                                                                                             str(product_features[TRANSPARENCY])))
             return False
         buyer_groups = [self.model.get_segment(segment) for segment in offer["buyer-segments"]]
         for group in buyer_groups:
@@ -105,12 +105,14 @@ class Algorithm:
             matches = matches and self.feature_matches_in(feature, actual_features, feature_type)
         return matches
 
-    def feature_matches_in(self, feature, product_features, field):
+    @staticmethod
+    def feature_matches_in(feature, product_features, field):
         if not field in product_features:
             return False
         return product_features[field] in feature["in"]
 
-    def feature_matches_eq(self, feature, product_features, field):
+    @staticmethod
+    def feature_matches_eq(feature, product_features, field):
         if not field in product_features:
             return False
         return product_features[field] == feature[field]
