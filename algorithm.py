@@ -4,6 +4,7 @@ import unittest
 
 TRANSPARENCY = "transparency"
 DSP = "dsp"
+AGENCY = "agency"
 COUNTRY = "country"
 ADFORMAT = "adformat"
 
@@ -38,20 +39,23 @@ class Algorithm:
         self.model = Model(model_dict)
 
     def get_price(self, product_features, buyer_features):
+        # rules are organised into tiers by specificity, the more product features the higher the tier
         tiers = reversed(sorted(self.model.tiers.keys()))
         for tier in tiers:
-            price = self.highest_matching_price_in_tier(self.model.get_tier(tier), product_features, buyer_features)
+            price = self.highest_matching_price_in_tier(tier, product_features, buyer_features)
             if price is not None:
                 return price
             else:
                 print("found no matching rules with specificity " + str(tier))
         return None
 
-    def highest_matching_price_in_tier(self, products, product_features, buyer_features):
+    def highest_matching_price_in_tier(self, tier, product_features, buyer_features):
+        products = self.model.get_tier(tier)
         highest_price = None
         for product in products:
             price = self.highest_matching_price_in_product(product, product_features, buyer_features)
-            if highest_price is None or price is not None and price > highest_price:
+            if price is not None and (highest_price is None or price > highest_price):
+                print("- found new highest price [{}], greater than [{}] within tier {}".format(price, highest_price, tier))
                 highest_price = price
         return highest_price
 
@@ -64,14 +68,16 @@ class Algorithm:
             if self.offer_matches(offer, buyer_features, product_features):
                 print("- found an offer with a matching buyer {}".format(str(offer)))
                 price = offer["price"]
-                if highest_price is None or price is not None and price > highest_price:
+                if price is not None and (highest_price is None or price > highest_price):
                     print("- found a price {} higher than the last max {}".format(str(price), str(highest_price)))
                     highest_price = price
         return highest_price
 
     def offer_matches(self, offer, buyer_features, product_features):
         if not self.feature_matches_eq(offer, product_features, TRANSPARENCY):
-            print("-- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]), str(product_features[TRANSPARENCY])))
+            print(
+                "-- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]),
+                                                                                           str(product_features[TRANSPARENCY])))
             return False
         buyer_groups = [self.model.get_segment(segment) for segment in offer["buyer-segments"]]
         for group in buyer_groups:
@@ -83,13 +89,18 @@ class Algorithm:
         return False
 
     def product_matches(self, product, product_features):
+        feature_filter = product["product_features"]
+        return self.features_match_mask(feature_filter, product_features)
+
+    def buyer_matches(self, feature_filter, actual_features):
+        feature_filter = feature_filter
+        return self.features_match_mask(feature_filter, actual_features)
+
+    def features_match_mask(self, feature_filter, actual_features):
         matches = True
-        for feature in product["product_features"]:
+        for feature in feature_filter:
             feature_type = feature["feature"]
-            if feature_type == COUNTRY:
-                matches = matches and self.feature_matches_in(feature, product_features, COUNTRY)
-            elif feature_type == ADFORMAT:
-                matches = matches and self.feature_matches_in(feature, product_features, ADFORMAT)
+            matches = matches and self.feature_matches_in(feature, actual_features, feature_type)
         return matches
 
     def feature_matches_in(self, feature, product_features, field):
@@ -102,25 +113,28 @@ class Algorithm:
             return False
         return product_features[field] == feature[field]
 
-    def buyer_matches(self, buyer, buyer_features):
-        default = False
-        all_matched = True
-        for feature in buyer:
-            feature_type = feature["feature"]
-            if feature_type == DSP:
-                all_matched = all_matched and self.feature_matches_in(feature, buyer_features, DSP)
-        return default | all_matched
-
 
 model = {
     "buyers": {
-        "Metrigo": [{
-            "feature": DSP,
-            "in": [1]
-        }]
+        "Metrigo": [
+            {
+                "feature": DSP,
+                "in": [1]
+            }
+        ],
+        "Other": [  # is this possible, a buyer defined by multiple features?
+            {
+                "feature": AGENCY,
+                "in": [2]
+            }, {
+                "feature": DSP,
+                "in": [1]
+            }
+        ]
     },
     "buyer-segments": {
-        "adwords": ["Metrigo"]
+        "adwords": ["Metrigo"],
+        "Other": ["Other"],
     },
     "products": {
         "rule": {
@@ -151,26 +165,50 @@ model = {
                 "price": 3.4,
                 TRANSPARENCY: "blind",
                 "buyer-segments": ["adwords"]
-            }]
+            }, {
+                "price": 4.4,
+                TRANSPARENCY: "open",
+                "buyer-segments": ["adwords"]
+            },
+                {
+                    "price": 4.3,
+                    TRANSPARENCY: "open",
+                    "buyer-segments": ["Other"]
+                }
+            ]
         }
     }
 }
 
 
 class TestAlgorithm(unittest.TestCase):
-    def testSimpleCase(self):
+    def testRuleWithASingleProductFeature(self):
         product_features = {ADFORMAT: "460x100", TRANSPARENCY: "blind"}
         buyer_features = {DSP: 1}
         algo = Algorithm(model)
         price = algo.get_price(product_features, buyer_features)
         self.assertEqual(price, 1.3)
 
-    def testProductSpecificity(self):
+    def testMoreSpecificProductFeaturesWin(self):
         product_features = {ADFORMAT: "460x100", TRANSPARENCY: "blind", COUNTRY: "DE"}
         buyer_features = {DSP: 1}
         algo = Algorithm(model)
         price = algo.get_price(product_features, buyer_features)
         self.assertEqual(price, 3.4)
+
+    def testTransparencyMustMatchOffer(self):
+        product_features = {ADFORMAT: "460x100", TRANSPARENCY: "open", COUNTRY: "DE"}
+        buyer_features = {DSP: 1}
+        algo = Algorithm(model)
+        price = algo.get_price(product_features, buyer_features)
+        self.assertEqual(price, 4.4)
+
+    def testBuyerWithMultipleCriteriaIsNotPreferred(self):
+        product_features = {ADFORMAT: "460x100", TRANSPARENCY: "open", COUNTRY: "DE"}
+        buyer_features = {DSP: 1, AGENCY: 2}
+        algo = Algorithm(model)
+        price = algo.get_price(product_features, buyer_features)
+        self.assertEqual(price, 4.4)
 
 
 if __name__ == '__main__':
