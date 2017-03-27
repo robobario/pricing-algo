@@ -71,7 +71,7 @@ class Algorithm:
 
     def offer_matches(self, offer, buyer_features, product_features):
         if not self.feature_matches_eq(offer, product_features, TRANSPARENCY):
-            print("-- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]), buyer_features[TRANSPARENCY]))
+            print("-- offer transparency {} did not match impression transparency {}".format(str(offer[TRANSPARENCY]), str(product_features[TRANSPARENCY])))
             return False
         buyer_groups = [self.model.get_segment(segment) for segment in offer["buyer-segments"]]
         for group in buyer_groups:
