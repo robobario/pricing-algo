@@ -80,13 +80,13 @@ class Algorithm:
 
     def product_matches(self, product, product_features):
         feature_filter = product["product_features"]
-        return self.features_match_mask(feature_filter, product_features)
+        return self.features_match_filter(feature_filter, product_features)
 
     def buyer_matches(self, feature_filter, actual_features):
         feature_filter = feature_filter
-        return self.features_match_mask(feature_filter, actual_features)
+        return self.features_match_filter(feature_filter, actual_features)
 
-    def features_match_mask(self, feature_filter, actual_features):
+    def features_match_filter(self, feature_filter, actual_features):
         matches = True
         for feature in feature_filter:
             feature_type = feature["feature"]
@@ -94,16 +94,16 @@ class Algorithm:
         return matches
 
     @staticmethod
-    def feature_matches_in(feature, product_features, field):
-        if not field in product_features:
+    def feature_matches_in(feature, actual_features, field):
+        if not field in actual_features:
             return False
-        return product_features[field] in feature["in"]
+        return actual_features[field] in feature["in"]
 
     @staticmethod
-    def feature_matches_eq(feature, product_features, field):
-        if not field in product_features:
+    def feature_matches_eq(feature, actual_features, field):
+        if not field in actual_features:
             return False
-        return product_features[field] == feature[field]
+        return actual_features[field] == feature[field]
 
 
 model = {
