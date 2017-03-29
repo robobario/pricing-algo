@@ -65,13 +65,17 @@ class Algorithm:
             return None
         print("--- found a rule with product-features [{}] matching impression [{}] ".format(product["product_features"], product_features))
         highest_price = None
+        highest_spec = None
         for offer in product["offers"]:
-            if self.offer_matches(offer, buyer_features, product_features):
+            offer_spec = self.offer_matches(offer, buyer_features, product_features)
+            price = offer["price"]
+            higher_spec = offer_spec is not None and (highest_spec is None or offer_spec > highest_spec)
+            higher_price = price is not None and (highest_price is None or price > highest_price)
+            if higher_spec or (higher_price and offer_spec == highest_spec):
+                highest_spec = offer_spec
                 print("---- found an offer with a matching buyer {}".format(str(offer)))
-                price = offer["price"]
-                if price is not None and (highest_price is None or price > highest_price):
-                    print("---- found a price {} higher than the last max {}".format(str(price), str(highest_price)))
-                    highest_price = price
+                print("---- found a price {} higher than the last max {}".format(str(price), str(highest_price)))
+                highest_price = price
         print("--- highest price found : {}".format(highest_price))
         return highest_price
 
@@ -82,13 +86,14 @@ class Algorithm:
                                                                                              str(product_features[TRANSPARENCY])))
             return False
         buyer_groups = [self.model.get_segment(segment) for segment in offer["buyer-segments"]]
+        highest_spec = None
         for group in buyer_groups:
             for buyer_id in group:
                 buyer = self.model.get_buyer(buyer_id)
-                if self.buyer_matches(buyer, buyer_features):
-                    print("----- found buyer [{}] matching buyer features [{}]".format(str(buyer), str(buyer_features)))
-                    return True
-        return False
+                spec = self.buyer_matches(buyer, buyer_features)
+                if spec is not None and (highest_spec is None or spec > highest_spec):
+                    highest_spec = spec
+        return highest_spec
 
     def product_matches(self, product, product_features):
         feature_filter = product["product_features"]
@@ -96,7 +101,11 @@ class Algorithm:
 
     def buyer_matches(self, feature_filter, buyer_features):
         feature_filter = feature_filter
-        return self.features_match_filter(feature_filter, buyer_features)
+        match_filter = self.features_match_filter(feature_filter, buyer_features)
+        if match_filter:
+            return len(feature_filter)
+        else:
+            return None
 
     def features_match_filter(self, feature_filter, actual_features):
         matches = True
@@ -184,7 +193,6 @@ model = {
     }
 }
 
-
 class TestAlgorithm(unittest.TestCase):
     def testRuleWithASingleProductFeature(self):
         product_features = {ADFORMAT: "460x100", TRANSPARENCY: "blind"}
@@ -207,12 +215,12 @@ class TestAlgorithm(unittest.TestCase):
         price = algo.get_price(product_features, buyer_features)
         self.assertEqual(price, 4.4)
 
-    def testBuyerWithMultipleCriteriaIsNotPreferred(self):
+    def testBuyerWithMultipleBuyerCriteriaIsPreferred(self):
         product_features = {ADFORMAT: "460x100", TRANSPARENCY: "open", COUNTRY: "DE"}
         buyer_features = {DSP: 1, AGENCY: 2}
         algo = Algorithm(model)
         price = algo.get_price(product_features, buyer_features)
-        self.assertEqual(price, 4.4)
+        self.assertEqual(price, 4.3)
 
 
 if __name__ == '__main__':
