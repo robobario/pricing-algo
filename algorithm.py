@@ -7,25 +7,29 @@ DSP = "dsp"
 AGENCY = "agency"
 COUNTRY = "country"
 ADFORMAT = "adformat"
-
+from collections import namedtuple
+from operator import attrgetter
 
 def specificity(product):
     return len(product["product_features"])
 
+Tier = namedtuple("Tier", ["priority", "num_features"])
 
 class Model:
     def __init__(self, _model):
         self.model = _model
-        self.tiers = {}
-        for name, product in model["products"].items():
-            tier = specificity(product)
-            if tier in self.tiers:
-                self.tiers[tier].append(product)
+        self.tiers = []
+        products = model["products"].values()
+        keyed = [(Tier(product['priority'], specificity(product)), product) for product in products]
+        tiers = {}
+        for (tier, product) in keyed:
+            if tier in tiers:
+                tiers[tier].append(product)
             else:
-                self.tiers[tier] = [product]
-
-    def get_tier(self, key):
-        return self.tiers[key]
+                tiers[tier] = [product]
+        tier_keys = reversed(sorted(tiers.keys(), key=attrgetter('priority', 'num_features')))
+        for key in tier_keys:
+            self.tiers.append(tiers[key])
 
     def get_segment(self, segment_id):
         return self.model["buyer-segments"][segment_id]
@@ -40,7 +44,7 @@ class Algorithm:
 
     def get_price(self, product_features, buyer_features):
         # rules are organised into tiers by specificity, the more product features the higher the tier
-        tiers = reversed(sorted(self.model.tiers.keys()))
+        tiers = self.model.tiers
         for tier in tiers:  # iterate from high specificity to low
             price = self.highest_matching_price_in_tier(tier, product_features, buyer_features)
             if price is not None:
@@ -51,7 +55,7 @@ class Algorithm:
         return None
 
     def highest_matching_price_in_tier(self, tier, product_features, buyer_features):
-        products = self.model.get_tier(tier)
+        products = tier
         highest_price = None
         for product in products:
             price = self.highest_matching_price_in_product(product, product_features, buyer_features)
@@ -151,6 +155,7 @@ model = {
     },
     "products": {
         "rule": {
+            "priority": 1,
             "product_features": [
                 {
                     "feature": ADFORMAT,
@@ -163,7 +168,26 @@ model = {
                 "buyer-segments": ["adwords"]
             }]
         },
+        "rule-exception": {
+            "priority": 2,
+            "product_features": [
+                {
+                    "feature": ADFORMAT,
+                    "in": ["460x100"]
+                },
+                {
+                    "feature": COUNTRY,
+                    "in": ["CZ"]
+                }
+            ],
+            "offers": [{
+                "price": 2.2,
+                TRANSPARENCY: "blind",
+                "buyer-segments": ["adwords"]
+            }]
+        },
         "rule2": {
+            "priority": 1,
             "product_features": [
                 {
                     "feature": ADFORMAT,
@@ -221,6 +245,13 @@ class TestAlgorithm(unittest.TestCase):
         algo = Algorithm(model)
         price = algo.get_price(product_features, buyer_features)
         self.assertEqual(price, 4.3)
+
+    def testHigherPriorityRulePrefered(self):
+        product_features = {ADFORMAT: "460x100", TRANSPARENCY: "open", COUNTRY: "CZ"}
+        buyer_features = {DSP: 1, AGENCY: 2}
+        algo = Algorithm(model)
+        price = algo.get_price(product_features, buyer_features)
+        self.assertEqual(price, 2.2)
 
 
 if __name__ == '__main__':
